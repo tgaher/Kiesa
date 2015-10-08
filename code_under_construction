@@ -1,0 +1,23 @@
+// ================================
+// WHEN A GAME SESSION STARTS
+// ================================
+// Receiving parameters:
+// _meid :  the meid code of the device
+// _devKey : The Key given to the developer
+// _ambitGameKey: The game key given to the developer
+Parse.Cloud.define("EndPlayerSessionStartedEvent", function(request, response){
+
+  //todo : VERIFY THE DEVKEY AND THE GAMEKEY POVIDED
+  var EndPlayer = Parse.Object.extends("EndPlayer");
+  var PlayerGames = Parse.Object.extends("PlayerGames");
+  var meid = request.params._meid;
+  var ambitGameKey = request.params._ambitGameKey;
+  var devkey = request.params._devKey;
+  var monthArray = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  var currentDateTime = new Date();
+	var MonthPlayerSession = Parse.Object.extend(devKey + "%" + ambitGameKey + "%" + monthArray[currentDateTime.getUTCMonth()] + currentDateTime.getUTCFullYear() + "PlayerSessions");
+
+  hasThisPlayerBeenProfiledYet = new Parse.Query(EndPlayer);
+
+})
