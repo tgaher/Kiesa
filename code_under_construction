@@ -5,19 +5,134 @@
 // _meid :  the meid code of the device
 // _devKey : The Key given to the developer
 // _ambitGameKey: The game key given to the developer
-Parse.Cloud.define("EndPlayerSessionStartedEvent", function(request, response){
-
-  //todo : VERIFY THE DEVKEY AND THE GAMEKEY POVIDED
-  var EndPlayer = Parse.Object.extends("EndPlayer");
-  var PlayerGames = Parse.Object.extends("PlayerGames");
-  var meid = request.params._meid;
-  var ambitGameKey = request.params._ambitGameKey;
-  var devkey = request.params._devKey;
-  var monthArray = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-  var currentDateTime = new Date();
-	var MonthPlayerSession = Parse.Object.extend(devKey + "%" + ambitGameKey + "%" + monthArray[currentDateTime.getUTCMonth()] + currentDateTime.getUTCFullYear() + "PlayerSessions");
-
-  hasThisPlayerBeenProfiledYet = new Parse.Query(EndPlayer);
-
-})
+	Parse.Cloud.define("EndPlayerSessionStartedEvent", function(request, response){
+​
+		//todo : VERIFY THE DEVKEY AND THE GAMEKEY POVIDED
+		var meid = request.params._meid;
+		var ambitGameKey = request.params._ambitGameKey;
+		var devkey = request.params._devKey;
+		var monthArray = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+		​
+		var DevPlayerGames = Parse.Object.extends(devkey + "PlayerGames");
+		​
+		var currentDateTime = new Date();
+		var MonthPlayerSession = Parse.Object.extend(devKey + "%" + ambitGameKey + "%" + monthArray[currentDateTime.getUTCMonth()] + currentDateTime.getUTCFullYear() + "PlayerSessions");
+		​
+		// NOW HERE I HAVE ASSUMED THAT ENDPLAYER IS PARTITIONED INTO alphabets and numerals
+		if(isNaN(meid.charAt(0))){
+			var EndPlayer = Parse.Object.extends("CharEndPlayer");
+		}
+		else {
+			var EndPlayer = Parse.Object.extends(meid.charAt(0)+"EndPlayer");
+		}
+		hasThisPlayerBeenProfiledYet = new Parse.Query(EndPLayerQuery);
+		hasThisPlayerBeenProfiledYet.equalTo("MEID", meid);
+		hasThisPlayerBeenProfiledYet.first().then(
+		function(hasThisPlayerBeenProfiledYetResult){
+			// IF THIS PLAYER HAS NOT BEEN PROFILED YET       
+			if(hasThisPlayerBeenProfiledYetResult.length == 0){
+				
+				// create a new row in all three tables endplayer, devplayergames and monthplayersession
+				// CASE_ONE
+				
+				var newEndPlayer= new EndPlayer();                                   
+				newEndPlayer.set("MEID", meid);                                     
+				newEndPlayer.set("discovered_by_game", ambitGameKey);                
+				newEndPlayer.set("ratio", 0);                                      
+				return newEndPlayer.save().then(
+				
+					function(newEndPlayerSaved){
+						
+						// If player hasn't been profiled yet,
+						// it also would not have a relationship
+						// with this game in DevPlayerGames table
+						// So we create a row for that
+						
+						var newPlayerGames = new DevPlayerGames();
+						newPlayerGames.set("MEID", meid);
+						newPlayerGames.set("ref_games", ambitGameKey);
+						newPlayerGames.set("sessions_played", 1);
+						return newPlayerGames.save().then(
+							function(newPlayerGameSaved){
+								var MonthPlayerSession = new MonthPlayerSession();
+								MonthPlayerSession.set("MEID",meid);
+								MonthPlayerSession.set("sessions_played",1);
+								MonthPlayerSession.set("videos_started",0);
+								MonthPlayerSession.set("videos_skipped",0);
+								MonthPlayerSession.set("videos_finshed",0);
+								MonthPlayerSession.set("videos_failed",0);
+								MonthPlayerSession.set("date",new Date());
+								return MonthPlayerSession.save().then(
+								  response.success({"response","case 1: newPlayerAdded"});
+								);
+							}
+						);
+					}
+				);	
+			}
+			else if(hasThisPlayerBeenProfiledYetResult.length > 0){
+         
+                // IF THIS PLAYER HAS BEEN PROFILED YET
+                // There is a chance that the player is playing a new game
+                // So we check that
+                hasPlayerPlayedThisGameBefore = new Parse.Query(DevPlayerGames);
+                hasPlayerPlayedThisGameBefore.equalTo("MEID", meid);
+                hasPlayerPlayedThisGameBefore.equalTo("ref_games", ambitGameKey);
+                return hasPlayerPlayedThisGameBefore.first().then(
+                 
+                    function(hasPlayerPlayedThisGameBeforeResult){
+						// if the player has never played this game
+						//CASE_TWO
+                        if (hasPlayerPlayedThisGameBeforeResult.length == 0 ){
+ 
+                            //create new rows in devplayergames and monthplayersessions
+                            // And set default values into it
+                            var newPlayerGames = new DevPlayerGames();
+							newPlayerGames.set("MEID", meid);
+							newPlayerGames.set("ref_games", ambitGameKey);
+							newPlayerGames.set("sessions_played", 1);
+							return newPlayerGames.save().then(
+								function(newPlayerGameSaved){
+									var MonthPlayerSession = new MonthPlayerSession();
+									MonthPlayerSession.set("MEID",meid);
+									MonthPlayerSession.set("sessions_played",1);
+									MonthPlayerSession.set("videos_started",0);
+									MonthPlayerSession.set("videos_skipped",0);
+									MonthPlayerSession.set("videos_finshed",0);
+									MonthPlayerSession.set("videos_failed",0);
+									MonthPlayerSession.set("date",new Date());
+									return MonthPlayerSession.save().then(
+									  response.success({"response","case 2: newPlayerAdded"});
+									);
+								}
+							);
+						}
+						else if (hasPlayerPlayedThisGameBeforeResult.length > 0){
+							//CASE_THREE		
+                            // Then we increment the session count
+							hasPlayerPlayedThisGameBeforeResult[0].set(
+								"sessions_played",
+								hasPlayerPlayedThisGameBeforeResult[0].get("sessions_played") + 1
+							);
+							return newPlayerGames.save().then(
+								function(newPlayerGameSaved){
+									newPlayerGameSaved.set(
+										"sessions_played",
+										newPlayerGameSaved[0].get("sessions_played") + 1
+									);
+									return newPlayerGameSaved[0].save().then(
+										function(sessionsIncremented){
+											response.success({
+											"response": "case 3: only sessions added"
+											});
+										}
+									);
+								}
+							);
+						}
+					}				
+				);
+			}				
+		});	
+	
+	});
